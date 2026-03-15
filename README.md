@@ -35,4 +35,4 @@ The system is intentionally method-agnostic. It should support:
 - `docs/03-domain-model.md`
 - `docs/04-market-representation-strategy.md`
 - `docs/05-v1-scope.md`
-- `docs/06-epic-alignment.md`# TradeResearch
+- `docs/06-epic-alignment.md`
