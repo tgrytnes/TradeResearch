@@ -1,0 +1,12 @@
+# AGENTS.local.md
+
+This optional file is for personal local overrides that should not be committed.
+
+Example uses:
+
+- local environment paths
+- preferred test runner commands on this machine
+- temporary focus areas for the current sprint
+- reminders about local MCP servers or datasets
+
+Keep local rules short and additive. Do not restate shared repository rules that belong in `AGENTS.md` or `.roo/rules/`.

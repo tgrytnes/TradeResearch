@@ -23,16 +23,20 @@ The system is intentionally method-agnostic. It should support:
 
 ## Initial architecture direction
 
-- SQL database as the system of record
+- ClickHouse as the canonical raw futures tick and quote store
+- PostgreSQL as the future application and workflow metadata store
 - Python modules as the research engine
 - Streamlit as a lightweight management and review UI
-- Artifact storage for graphs and evidence files
+- Parquet files plus artifact storage for interchange, archives, graphs, and evidence files
 
 ## Documentation
 
-- `docs/01-product-vision.md`
-- `docs/02-architecture-overview.md`
-- `docs/03-domain-model.md`
-- `docs/04-market-representation-strategy.md`
-- `docs/05-v1-scope.md`
-- `docs/06-epic-alignment.md`
+- `AGENTS.md`
+- `docs/README.md`
+- `docs/01-development-operating-system.md`
+- `docs/02-agent-memory-and-mcp-strategy.md`
+- `docs/architecture/adr-001-storage-and-source-of-truth.md`
+- `docs/runbooks/clickhouse-local-setup.md`
+- `docs/runbooks/continuous-futures-rollover.md`
+- `docs/templates/change-record-template.md`
+- `docs/changes/README.md`

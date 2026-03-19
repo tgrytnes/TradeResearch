@@ -1,0 +1,7 @@
+AGENTS.local.md
+.codeindex/
+.roo/mcp.json
+.roo/memory/
+.DS_Store
+__pycache__/
+*.pyc

@@ -1,0 +1,28 @@
+{
+  "mcpServers": {
+    "memory-traderesearch": {
+      "command": "/opt/homebrew/bin/npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-memory"
+      ],
+      "env": {
+        "MEMORY_FILE_PATH": "<ABSOLUTE_PATH_TO_REPO>/.roo/memory/traderesearch-memory.jsonl",
+        "NPM_CONFIG_CACHE": "<ABSOLUTE_PATH_TO_SHARED_NPM_CACHE>"
+      }
+    },
+    "codeix-traderesearch": {
+      "command": "/opt/homebrew/bin/npx",
+      "args": [
+        "-y",
+        "codeix",
+        "-r",
+        "<ABSOLUTE_PATH_TO_REPO>",
+        "serve"
+      ],
+      "env": {
+        "NPM_CONFIG_CACHE": "<ABSOLUTE_PATH_TO_SHARED_NPM_CACHE>"
+      }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "FDAX": {
+    "exchange": "EUREX",
+    "timezone": "Europe/Berlin",
+    "currency": "EUR",
+    "tick_size": 0.5,
+    "point_value": 25.0,
+    "cycle_months": [3, 6, 9, 12],
+    "settlement_type": "cash_settled",
+    "confirmation_sessions": 2,
+    "hard_cutoff_days_before_last_trade": 1,
+    "representative_price": "session_close",
+    "expiry_rule": "third_friday"
+  }
+}
