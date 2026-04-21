@@ -1,5 +1,10 @@
 AGENTS.local.md
+.env
+.env.*
+!.env.example
 .codeindex/
+.claude/settings.local.json
+.archon/.env
 .roo/mcp.json
 .roo/memory/
 .DS_Store
