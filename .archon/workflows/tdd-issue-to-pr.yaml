@@ -1,0 +1,230 @@
+name: tdd-issue-to-pr
+description: |
+  Implement one GitHub issue with TDD, push a branch, open a draft PR,
+  post GitHub progress comments, run validation/review, and stop before merge.
+  Human approval is required before the workflow posts its final ready-for-review
+  comment. GitHub branch protection remains the merge authority.
+provider: claude
+interactive: true
+
+nodes:
+  - id: fetch-issue
+    bash: |
+      mkdir -p "$ARTIFACTS_DIR"
+
+      issue_num="$(
+        printf '%s\n' "$ARGUMENTS" |
+          grep -oE 'issues/[0-9]+|#[0-9]+|[0-9]+' |
+          head -1 |
+          grep -oE '[0-9]+'
+      )"
+
+      if [[ -z "$issue_num" ]]; then
+        echo "No GitHub issue number found in: $ARGUMENTS" >&2
+        exit 1
+      fi
+
+      printf '%s\n' "$issue_num" > "$ARTIFACTS_DIR/issue-number"
+      gh issue view "$issue_num" --json number,title,body,labels,comments,url,state
+    timeout: 30000
+
+  - id: inspect-repo
+    bash: |
+      {
+        echo "branch=$(git branch --show-current)"
+        echo "base=$BASE_BRANCH"
+        echo
+        echo "Tracked validation files:"
+        git ls-files 'scripts/*.sh' 'scripts/*.py' '.github/**' '.archon/**' 'docs/**' | sed 's/^/- /'
+        echo
+        echo "Validation command:"
+        if [[ -x scripts/validate.sh ]]; then
+          echo "scripts/validate.sh"
+        else
+          echo "python3 -m compileall -q scripts && for f in scripts/*.sh; do bash -n \"$f\"; done"
+        fi
+      }
+    timeout: 10000
+
+  - id: plan
+    prompt: |
+      Create a TDD implementation plan for this GitHub issue.
+
+      Issue JSON:
+      $fetch-issue.output
+
+      Repo context:
+      $inspect-repo.output
+
+      Required process:
+      - Work on exactly one issue.
+      - Do not work on main directly.
+      - Start with a failing test or reproducible failing check.
+      - Prove the check fails before implementation.
+      - Implement the smallest passing change.
+      - Run `scripts/validate.sh`.
+      - Add or update a durable change record under `docs/changes/`.
+      - Push the branch and open a draft PR.
+      - Post useful GitHub issue/PR comments with evidence.
+      - Do not merge, squash, rebase onto main, enable auto-merge, or delete branches.
+
+      Write the plan to `$ARTIFACTS_DIR/plan.md`.
+      Include the exact red-check command and expected failure.
+    depends_on: [fetch-issue, inspect-repo]
+
+  - id: approve-plan
+    approval:
+      message: "Review the TDD plan in the workflow output. Approve to begin implementation, or reject with required changes."
+      capture_response: true
+      on_reject:
+        prompt: |
+          The human reviewer rejected the plan with this feedback:
+          $REJECTION_REASON
+
+          Revise `$ARTIFACTS_DIR/plan.md` to address the feedback. Summarize the changes.
+        max_attempts: 3
+    depends_on: [plan]
+
+  - id: red-loop
+    idle_timeout: 600000
+    loop:
+      prompt: |
+        Implement only the TDD red step for this issue.
+
+        Inputs:
+        - Issue: $fetch-issue.output
+        - Plan approval notes: $approve-plan.output
+        - Plan file: `$ARTIFACTS_DIR/plan.md`
+
+        Requirements:
+        - Add the smallest test, fixture, or reproducible check that captures the issue.
+        - Do not implement the production fix yet.
+        - Run the targeted check and prove that it fails for the expected reason.
+        - Save the command, exit status, and relevant output to `$ARTIFACTS_DIR/red-evidence.md`.
+
+        When the failing check is proven and documented, finish with:
+        <promise>RED_DONE</promise>
+      until: RED_DONE
+      max_iterations: 3
+      fresh_context: false
+    depends_on: [approve-plan]
+
+  - id: approve-red
+    approval:
+      message: "Review the failing test/check evidence. Approve to implement the fix, or reject with required TDD changes."
+      capture_response: true
+      on_reject:
+        prompt: |
+          The human reviewer rejected the red-step evidence:
+          $REJECTION_REASON
+
+          Fix the red-step test/check evidence and update `$ARTIFACTS_DIR/red-evidence.md`.
+        max_attempts: 3
+    depends_on: [red-loop]
+
+  - id: implement-loop
+    idle_timeout: 900000
+    loop:
+      prompt: |
+        Implement the smallest passing change for this issue.
+
+        Inputs:
+        - Issue: $fetch-issue.output
+        - Plan: `$ARTIFACTS_DIR/plan.md`
+        - Red evidence: `$ARTIFACTS_DIR/red-evidence.md`
+        - Human red-step notes: $approve-red.output
+
+        Requirements:
+        - Keep the scope limited to the issue.
+        - Make the red check pass.
+        - Run `scripts/validate.sh`.
+        - Add or update a change record under `docs/changes/`.
+        - Save validation evidence to `$ARTIFACTS_DIR/green-evidence.md`.
+        - Do not merge, enable auto-merge, or push to main.
+
+        When implementation, docs, and validation are complete, finish with:
+        <promise>GREEN_DONE</promise>
+      until: GREEN_DONE
+      max_iterations: 6
+      fresh_context: false
+      until_bash: "scripts/validate.sh"
+    depends_on: [approve-red]
+
+  - id: validate
+    bash: |
+      scripts/validate.sh
+    depends_on: [implement-loop]
+    timeout: 120000
+
+  - id: create-draft-pr
+    idle_timeout: 600000
+    prompt: |
+      Prepare the completed issue work for GitHub review.
+
+      Inputs:
+      - Issue: $fetch-issue.output
+      - Validation output: $validate.output
+      - Plan: `$ARTIFACTS_DIR/plan.md`
+      - Red evidence: `$ARTIFACTS_DIR/red-evidence.md`
+      - Green evidence: `$ARTIFACTS_DIR/green-evidence.md`
+
+      Required actions:
+      - Confirm the current branch is not `main`.
+      - Inspect `git status` and `git diff`.
+      - Commit only relevant files.
+      - Push the branch to `origin`.
+      - Create a draft GitHub PR targeting `main` using `gh pr create --draft`.
+      - Link the original issue.
+      - Include TDD evidence, validation evidence, docs/change-record notes, risks, and rollback plan.
+      - Post a concise issue comment that a draft PR is ready for review.
+      - Write the PR URL to `$ARTIFACTS_DIR/.pr-url`.
+
+      Forbidden actions:
+      - Do not merge the PR.
+      - Do not run `gh pr merge`.
+      - Do not enable auto-merge.
+      - Do not delete the branch.
+    depends_on: [validate]
+
+  - id: pr-metadata
+    bash: |
+      gh pr view --json number,url,state,isDraft,mergeStateStatus,headRefName,baseRefName
+    depends_on: [create-draft-pr]
+    timeout: 30000
+
+  - id: self-review
+    idle_timeout: 600000
+    prompt: |
+      Review the draft PR before asking for final human approval.
+
+      PR metadata:
+      $pr-metadata.output
+
+      Requirements:
+      - Review the diff like a code reviewer.
+      - Run `scripts/validate.sh` again if any file changed during review.
+      - Fix critical or high-severity issues directly.
+      - Leave medium/low findings as PR comments if they are real but not blocking.
+      - Update `$ARTIFACTS_DIR/review-summary.md` with findings and fixes.
+      - Do not merge, enable auto-merge, or delete branches.
+    depends_on: [pr-metadata]
+
+  - id: final-human-approval
+    approval:
+      message: "Final human gate: review the draft PR on GitHub. Approve only when the PR is ready for manual merge. This workflow will still not merge."
+      capture_response: true
+    depends_on: [self-review]
+
+  - id: final-comment
+    prompt: |
+      Post a final GitHub PR comment summarizing the ready-for-review state.
+
+      Include:
+      - TDD red evidence location
+      - Validation evidence location
+      - Review summary location
+      - Human approval response: $final-human-approval.output
+      - Explicit note: "This workflow did not merge the PR. Merge is blocked by GitHub branch protection until human approval and required checks pass."
+
+      Do not merge, enable auto-merge, or delete branches.
+    depends_on: [final-human-approval]
